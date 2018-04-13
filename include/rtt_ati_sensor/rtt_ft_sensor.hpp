@@ -7,10 +7,16 @@
 #include <iostream>
 #include <boost/shared_ptr.hpp>
 #include <ati_sensor/ft_sensor.h>
-#include <geometry_msgs/WrenchStamped.h>
-#include <std_msgs/Empty.h>
-#include <std_srvs/Empty.h>
-#include <rtt_roscomm/rosservice.h>
+
+#ifdef USE_ROS
+  #include <geometry_msgs/WrenchStamped.h>
+  #include <std_msgs/Empty.h>
+  #include <std_srvs/Empty.h>
+  #include <rtt_roscomm/rosservice.h>
+#endif
+
+// use rst-rt for Orocos
+#include <rst-rt/dynamics/Wrench.hpp>
 
 #define  RD_MODE_USER_PERIOD  0
 #define  RD_MODE_EVENTBASED   1
@@ -53,6 +59,8 @@ class FTSensor : public RTT::TaskContext{
      * @return void
      */
     void updateHook();
+
+#ifdef USE_ROS
     /**
      * @brief Set the bias for the sensor (rosservice)
      *
@@ -61,6 +69,7 @@ class FTSensor : public RTT::TaskContext{
      * @return bool
      */
     bool setBiasROS(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response);
+#endif
     /**
      * @brief Set the bias for the sensor (orocos)
      *
@@ -88,6 +97,7 @@ protected:
      * 3: user read rate, and change periodicity to match NetFT Output rate
      */
     int read_mode_;
+#ifdef USE_ROS
     /**
      * @brief The Orocos output port "wrench"
      *
@@ -98,6 +108,17 @@ protected:
      *
      */
     geometry_msgs::WrenchStamped wrenchStamped;
+#endif
+    /**
+     * @brief The Orocos output port "wrench"
+     *
+     */
+    RTT::OutputPort<rstrt::dynamics::Wrench> out_wrench_port;
+    /**
+     * @brief The wrench data to be sent
+     *
+     */
+    rstrt::dynamics::Wrench out_wrench_var;
     /**
      * @brief The measurement from the sensor (to be transformed to a WrenchStamped msg)
      *

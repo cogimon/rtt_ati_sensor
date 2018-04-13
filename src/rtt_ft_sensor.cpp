@@ -1,36 +1,43 @@
 #include "rtt_ati_sensor/rtt_ft_sensor.hpp"
-#include <rtt_rosclock/rtt_rosclock.h>
-#include <rtt_roscomm/rtt_rostopic.h>
-#include <rtt_rosparam/rosparam.h>
-#include <rtt_ros/rtt_ros.h>
+
+#ifdef USE_ROS
+    #include <rtt_rosclock/rtt_rosclock.h>
+    #include <rtt_roscomm/rtt_rostopic.h>
+    #include <rtt_rosparam/rosparam.h>
+    #include <rtt_ros/rtt_ros.h>
+#endif
 
 rtt_ati::FTSensor::FTSensor(std::string const& name) : TaskContext(name){
     calibration_index_ = ati::current_calibration;
-    ip_ = "";
+    ip_ = ati::default_ip;
     frame_ = rtt_ati::default_frame;
     read_mode_ = RD_MODE_USER_PERIOD;
     sample_count_ = rtt_ati::default_sample_count;
 
     this->addProperty("ip",ip_).doc("(xxx.xxx.xxx.xxx) The IP address for the ATI NET F/T box (default : "+ati::default_ip+" )");
     this->addProperty("read_mode",read_mode_).doc("(int) 0: user period, 1: event-based, 2: event-based at NetFT rate to match user periodicity, 3: user period matching NetFT rate (default : 0)");
-    this->addProperty("frame",frame_).doc("(string) The name of the frame for the wrenchStamped msg (default : "+rtt_ati::default_frame+" )");
+    this->addProperty("frame",frame_).doc("(string) The name of the frame for the wrenchStamped msg (default : "+rtt_ati::default_frame+" ) (if ROS is used)");
     this->addProperty("calibration_index", calibration_index_).doc("(uint) The calibration index to use (default: current)");
     this->addProperty("sample_count", sample_count_).doc("(int) number of samples, also determines the streaming mode (default: -1)");
-
+#ifdef USE_ROS
     this->ports()->addPort("WrenchStamped",this->port_WrenchStamped);
     port_WrenchStamped.createStream(rtt_roscomm::topic(this->getName()+"/wrench"));
-
-    this->addOperation("setBias",&rtt_ati::FTSensor::setBias,this,RTT::OwnThread);
     this->addOperation("setBiasROS",&rtt_ati::FTSensor::setBiasROS,this,RTT::OwnThread);
-
+#endif
+    this->ports()->addPort("out_wrench_port",this->out_wrench_port);
+    this->addOperation("setBias",&rtt_ati::FTSensor::setBias,this,RTT::OwnThread);
+    
     ft_sensor_ = boost::shared_ptr<ati::FTSensor>(new ati::FTSensor());
     set_bias_ = false;
 }
+
+#ifdef USE_ROS
 bool rtt_ati::FTSensor::setBiasROS(std_srvs::Empty::Request& request, std_srvs::Empty::Response& response)
 {
     set_bias_ = true;
     return true;
 }
+#endif
 
 bool rtt_ati::FTSensor::setBias()
 {
@@ -38,9 +45,10 @@ bool rtt_ati::FTSensor::setBias()
     return true;
 }
 
-bool rtt_ati::FTSensor::configureHook(){
+bool rtt_ati::FTSensor::configureHook() {
     bool configured = false;
 
+#ifdef USE_ROS
     //  Setting the ROS Service set_bias
     boost::shared_ptr<rtt_rosservice::ROSService> rosservice = this->getProvider<rtt_rosservice::ROSService>("rosservice");
 
@@ -76,8 +84,14 @@ bool rtt_ati::FTSensor::configureHook(){
         ip_ = ati::default_ip;
         RTT::log(RTT::Warning)<<"ROSParam unavailable and no IP specified, using default ip : " << ati::default_ip<<RTT::endlog();
     }
+#endif
 
+#ifdef USE_ROS
     this->port_WrenchStamped.setDataSample(this->wrenchStamped);
+#endif
+
+    this->out_wrench_var = rstrt::dynamics::Wrench(0,0,0,0,0,0);
+    this->out_wrench_port.setDataSample(this->out_wrench_var);
 
     if(sample_count_ > 1)
         configured = ft_sensor_->init(ip_,calibration_index_,ati::command_s::BUFFERED, sample_count_);
@@ -168,14 +182,17 @@ bool rtt_ati::FTSensor::configureHook(){
         }
         break;
     }
-    
+#ifdef USE_ROS
     this->wrenchStamped.header.frame_id = frame_;
+#endif
     return configured;
 }
 
 void rtt_ati::FTSensor::updateHook()
 {
     ft_sensor_->getMeasurements(this->measurement,this->rdt_sequence,this->ft_sequence);
+
+#ifdef USE_ROS
     this->wrenchStamped.header.stamp = rtt_rosclock::host_now();
     this->wrenchStamped.wrench.force.x = measurement[0];
     this->wrenchStamped.wrench.force.y = measurement[1];
@@ -184,6 +201,15 @@ void rtt_ati::FTSensor::updateHook()
     this->wrenchStamped.wrench.torque.y = measurement[4];
     this->wrenchStamped.wrench.torque.z = measurement[5];
     this->port_WrenchStamped.write(wrenchStamped);
+#endif
+    this->out_wrench_var.forces(0) = measurement[0];
+    this->out_wrench_var.forces(1) = measurement[1];
+    this->out_wrench_var.forces(2) = measurement[2];
+    this->out_wrench_var.torques(0) = measurement[3];
+    this->out_wrench_var.torques(1) = measurement[4];
+    this->out_wrench_var.torques(2) = measurement[5];
+    this->out_wrench_port.write(this->out_wrench_var);
+
     if(set_bias_){
         set_bias_ = false;
         ft_sensor_->setBias();
