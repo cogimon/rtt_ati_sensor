@@ -1,18 +1,7 @@
 cmake_minimum_required(VERSION 2.8.6)
 
-project(rtt_ati_sensor)
-
-set(CMAKE_BUILD_TYPE Release)
-
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-std=c++11" COMPILER_SUPPORTS_CXX11)
-check_cxx_compiler_flag("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-if(COMPILER_SUPPORTS_CXX11)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g")
-elseif(COMPILER_SUPPORTS_CXX0X)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-else()
-    message(FATAL_ERROR "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
 
@@ -25,8 +14,9 @@ set(RTT_ATI_SENSOR_VERSION
 find_package(catkin QUIET COMPONENTS 
   rtt_ros 
   rtt_roscomm
+  roscpp
+  std_srvs
   std_msgs
-  ati_sensor
   geometry_msgs
   cmake_modules
 )
@@ -35,6 +25,15 @@ if(NOT ${catkin_FOUND})
   message(WARNING "[${PROJECT_NAME}] catkin not found. DISABLING all ROS-related parts.")  
 endif()
 
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/config)
+
+#if(${catkin_FOUND})
+#    catkin_package(
+#        CATKIN_DEPENDS geometry_msgs std_msgs
+#        INCLUDE_DIRS include
+#        LIBRARIES ati_sensor
+#    )
+#endif()
 
 find_package(OROCOS-RTT REQUIRED COMPONENTS rtt-scripting rtt-typekit)
 if (NOT OROCOS-RTT_FOUND)
@@ -50,10 +49,10 @@ find_package(orocos_kdl REQUIRED)
 
 find_package(Boost REQUIRED)
 
-find_package(ati_sensor REQUIRED)
-include_directories(BEFORE SYSTEM ${ati_sensor_INCLUDE_DIRS})
-#add_definitions(${ati_sensor_CFLAGS})
-link_directories(${ati_sensor_LIBRARY_DIR} ${ati_sensor_LIBRARY_DIRS})
+#find_package(ati_sensor REQUIRED)
+#include_directories(BEFORE SYSTEM ${ati_sensor_INCLUDE_DIRS})
+##add_definitions(${ati_sensor_CFLAGS})
+#link_directories(${ati_sensor_LIBRARY_DIR} ${ati_sensor_LIBRARY_DIRS})
 
 find_package(RST-RT REQUIRED)
 message(STATUS "RST-RT version: ${RST-RT_VERSION}")
@@ -63,7 +62,32 @@ link_directories(${RST-RT_LIBRARY_DIR} ${RST-RT_LIBRARY_DIRS})
 
 orocos_component(${PROJECT_NAME}
   src/rtt_ft_sensor.cpp
+  src/ft_sensor.cpp
 )
+
+find_package(Xenomai QUIET)
+# Allows to build for Xenomai + RTnet
+if(XENOMAI_FOUND OR (DEFINED $ENV{OROCOS_TARGET} AND $ENV{OROCOS_TARGET} EQUAL "xenomai"))
+
+    message("[${PROJECT_NAME}] Building ATI FT/Sensor for Xenomai ${XENOMAI_VERSION} + RTnet")
+    message("[${PROJECT_NAME}] Compiling with ${XENOMAI_RTDM_LIBRARIES} and ${XENOMAI_RTDM_INCLUDE_DIRS} and ${XENOMAI_RTDM_CFLAGS}")
+
+    # In Xenomai 3 it contains RTnet
+    include_directories(${XENOMAI_RTDM_INCLUDE_DIRS})
+    add_definitions(${XENOMAI_RTDM_CFLAGS})
+
+    # In Xenomai 2 we need the external RTnet
+    if(${XENOMAI_VERSION_MAJOR} EQUAL 2)
+        find_package(RTnet REQUIRED)
+        include_directories(${RTNET_INCLUDE_DIRS})
+    endif()
+
+    set_target_properties(ati_sensor PROPERTIES COMPILE_FLAGS -DXENOMAI_VERSION_MAJOR=${XENOMAI_VERSION_MAJOR})
+else()
+    message(WARNING "[${PROJECT_NAME}] Building ATI FT/Sensor WITHOUT Xenomai/RTnet support")
+    find_package(LibXml2 REQUIRED)
+    include_directories(${LIBXML2_INCLUDE_DIR})
+endif()
 
 if(${catkin_FOUND})
   include_directories(
@@ -78,7 +102,8 @@ if(${catkin_FOUND})
     ${orocos_kdl_LIBRARIES}
     ${catkin_LIBRARIES}
     ${Boost_LIBRARIES}
-    ${ati_sensor_LIBRARIES}
+    ${LIBXML2_LIBRARIES}
+    ${XENOMAI_RTDM_LIBRARIES}
   )
 else()
   include_directories(
@@ -96,9 +121,15 @@ else()
     ${USE_OROCOS_LIBRARIES}
     ${OROCOS-RTT_LIBRARIES}
     ${RST-RT_LIBRARIES}
-    ${ati_sensor_LIBRARIES}
+    ${LIBXML2_LIBRARIES}
+    ${XENOMAI_RTDM_LIBRARIES}
   )
 endif()
+
+#add_executable(simple_reader_test test/simple_reader.cpp src/ft_sensor.cpp)
+#add_executable(gauge_bias_tester  test/test_gauge_bias.cpp src/ft_sensor.cpp)
+
+
 
 if(${catkin_FOUND})
   orocos_generate_package(

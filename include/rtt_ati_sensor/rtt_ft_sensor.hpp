@@ -6,7 +6,7 @@
 #include <rtt/Component.hpp>
 #include <iostream>
 #include <boost/shared_ptr.hpp>
-#include <ati_sensor/ft_sensor.h>
+#include "rtt_ati_sensor/ft_sensor.h"
 
 #ifdef USE_ROS
   #include <geometry_msgs/WrenchStamped.h>
