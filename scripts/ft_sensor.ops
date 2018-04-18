@@ -1,5 +1,5 @@
-import("rtt_ros")
-ros.import("rtt_ati_sensor")
+#import("rtt_ros")
+import("rtt_ati_sensor")
 
 loadComponent("ft_sensor","rtt_ati::FTSensor")
 
