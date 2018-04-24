@@ -27,7 +27,7 @@
  * @brief Namespace containing all rtt related elements. Same as ati namespace for libati_sensor
  *
  */
-namespace rtt_ati{
+namespace rtt_ati {
 /**
   * @brief The default output TF frame name
   *
