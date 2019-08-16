@@ -1,5 +1,11 @@
 #import("rtt_ros")
-import("rtt_ati_sensor")
+#import("rtt_ati_sensor")
+import("Project")
+
+import("rtt_rsbcomm")
+import("rst-rt_typekit")
+import("kdl_typekit")
+import("eigen_typekit")
 
 loadComponent("ft_sensor","rtt_ati::FTSensor")
 
@@ -8,5 +14,8 @@ setActivity("ft_sensor",0.001,10,ORO_SCHED_RT)
 #ft_sensor.read_mode = 2
 #ft_sensor.sample_count = 0
 
+ft_sensor.ip = "192.168.1.1"
 ft_sensor.configure()
-ft_sensor.start()
+stream("ft_sensor.out_wrench_port", rsb.transport.socket.scope("/bhand/left/wrenches"))
+
+#ft_sensor.start()
